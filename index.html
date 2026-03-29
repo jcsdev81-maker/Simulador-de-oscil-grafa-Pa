@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROFIBUS PA — Analisador de Sinal</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f4;
+    --bg-tertiary: #efede8;
+    --text-primary: #1a1a18;
+    --text-secondary: #6b6b67;
+    --border: rgba(0,0,0,0.12);
+    --border-md: rgba(0,0,0,0.22);
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --green: #0F6E56;
+    --green-light: #E1F5EE;
+    --green-mid: #1D9E75;
+    --amber: #BA7517;
+    --amber-light: #FAEEDA;
+    --red: #A32D2D;
+    --red-light: #FCEBEB;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'Courier New', monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-primary: #1a1a18;
+      --bg-secondary: #242422;
+      --bg-tertiary: #2c2c2a;
+      --text-primary: #f0ede8;
+      --text-secondary: #9a9a96;
+      --border: rgba(255,255,255,0.1);
+      --border-md: rgba(255,255,255,0.2);
+    }
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 1rem;
+  }
+
+  .app {
+    max-width: 1100px;
+    margin: 0 auto;
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    border: 0.5px solid var(--border);
+    padding: 1.25rem 1.5rem 1.5rem;
+  }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-icon {
+    width: 32px; height: 32px;
+    background: var(--green);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    color: #E1F5EE; font-size: 16px; font-weight: 700;
+  }
+  .brand-name { font-size: 15px; font-weight: 500; }
+  .brand-sub  { font-size: 11px; color: var(--text-secondary); }
+  .badge-row  { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .badge {
+    font-size: 11px; padding: 3px 9px; border-radius: 5px;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .badge-g { background: var(--green-light);  color: var(--green);  border: 0.5px solid #9FE1CB; }
+  .badge-y { background: var(--amber-light); color: var(--amber); border: 0.5px solid #FAC775; }
+  .badge-r { background: var(--red-light);   color: var(--red);   border: 0.5px solid #F7C1C1; }
+  .tl-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  /* ── FAULT GRID ── */
+  .section-label {
+    font-size: 11px; font-weight: 500; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+  .fault-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 5px;
+    margin-bottom: 14px;
+  }
+  .fbtn {
+    font-size: 11px; padding: 7px 8px;
+    border: 0.5px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer; line-height: 1.3; text-align: center;
+    transition: border-color 0.12s, background 0.12s, color 0.12s;
+  }
+  .fbtn:hover { border-color: var(--green-mid); color: var(--text-primary); }
+  .fbtn.active {
+    background: var(--green-light);
+    border-color: var(--green-mid);
+    color: var(--green);
+    font-weight: 500;
+  }
+
+  /* ── TABS ── */
+  .tabs {
+    display: flex; gap: 0;
+    border-bottom: 0.5px solid var(--border);
+    margin-bottom: 14px;
+  }
+  .tab {
+    font-size: 12px; padding: 7px 16px; cursor: pointer;
+    color: var(--text-secondary);
+    border-bottom: 2px solid transparent;
+    transition: color 0.12s, border-color 0.12s;
+  }
+  .tab:hover { color: var(--text-primary); }
+  .tab.active { color: var(--green-mid); border-bottom-color: var(--green-mid); font-weight: 500; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── CONTROLS ── */
+  .ctrl-row {
+    display: flex; gap: 10px; align-items: center;
+    flex-wrap: wrap; margin-bottom: 10px;
+  }
+  .ctrl-grp { display: flex; align-items: center; gap: 6px; }
+  .ctrl-lbl { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+  input[type=range] {
+    width: 80px; height: 4px; cursor: pointer;
+    accent-color: var(--green-mid);
+  }
+  select, .sel {
+    font-size: 11px; padding: 4px 7px;
+    border-radius: 5px;
+    border: 0.5px solid var(--border-md);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+  .freeze-btn {
+    font-size: 11px; padding: 5px 14px;
+    border: 0.5px solid var(--border-md);
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border-radius: 5px; cursor: pointer;
+    margin-left: auto;
+    transition: background 0.12s;
+  }
+  .freeze-btn:hover { background: var(--bg-tertiary); }
+  .freeze-btn.frozen { border-color: var(--green-mid); color: var(--green-mid); }
+
+  /* ── SCOPE ── */
+  .scope-outer {
+    display: flex; gap: 0;
+    border: 0.5px solid var(--border-md);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    height: 290px;
+    margin-bottom: 12px;
+  }
+  .yruler {
+    width: 54px; flex-shrink: 0;
+    background: #060d0a;
+    border-right: 1px solid rgba(0,200,100,0.25);
+  }
+  canvas#yRuler { display: block; }
+  .scope-inner { flex: 1; position: relative; background: #070e0b; min-width: 0; }
+  canvas#mainScope { display: block; width: 100%; height: 100%; }
+  .scope-ol { position: absolute; top: 7px; left: 9px; pointer-events: none; }
+  .scope-or { position: absolute; top: 7px; right: 9px; pointer-events: none; text-align: right; }
+  .sc-lbl {
+    font-size: 10px; color: #4ade80;
+    font-family: var(--mono); line-height: 1.75;
+  }
+  .sc-lbl.warn { color: #facc15; }
+  .sc-lbl.err  { color: #f87171; }
+
+  /* ── VDC BAR ── */
+  .vdc-section { margin-bottom: 10px; }
+  .vdc-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 5px; }
+  .vdc-track {
+    height: 14px; border-radius: 4px;
+    background: var(--bg-secondary);
+    border: 0.5px solid var(--border);
+    position: relative; overflow: hidden;
+  }
+  .vdc-fill { height: 100%; border-radius: 4px; transition: width 0.4s, background 0.4s; }
+  .vdc-needle {
+    position: absolute; top: -3px; width: 2px; height: 20px;
+    background: #facc15; border-radius: 1px; transition: left 0.4s;
+  }
+  .vdc-markers {
+    position: relative; height: 14px; margin-top: 2px;
+    font-size: 9px; color: var(--text-secondary);
+  }
+  .vdc-tick { position: absolute; transform: translateX(-50%); }
+
+  /* ── SNR / SLOPE ── */
+  .meter-wrap { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
+  .meter-label { font-size: 11px; color: var(--text-secondary); white-space: nowrap; width: 88px; }
+  .meter-track {
+    flex: 1; height: 10px; border-radius: 5px;
+    background: linear-gradient(to right, #A32D2D 0%, #BA7517 40%, #1D9E75 70%, #1D9E75 100%);
+    position: relative; border: 0.5px solid var(--border);
+  }
+  .meter-needle {
+    position: absolute; top: -4px; width: 4px; height: 18px;
+    background: var(--bg-primary); border: 1px solid #888;
+    border-radius: 2px; transform: translateX(-50%); transition: left 0.4s;
+  }
+  .meter-val { font-size: 12px; font-weight: 500; width: 70px; text-align: right; }
+  .ok   { color: var(--green-mid); }
+  .warn { color: var(--amber); }
+  .err  { color: #E24B4A; }
+
+  /* ── MEASURES ── */
+  .mrow {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 7px; margin-top: 4px;
+  }
+  @media (max-width: 640px) { .mrow { grid-template-columns: repeat(3, 1fr); } }
+  .mcard {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    border: 0.5px solid var(--border);
+  }
+  .mc-lbl { font-size: 10px; color: var(--text-secondary); }
+  .mc-val { font-size: 14px; font-weight: 500; color: var(--text-primary); margin-top: 2px; }
+
+  /* ── BARGRAPH ── */
+  .bg-devices {
+    display: flex; gap: 10px; align-items: flex-end;
+    height: 140px; padding: 0 4px;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .bg-col { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1; min-width: 0; }
+  .bg-bar-wrap { flex: 1; display: flex; align-items: flex-end; width: 100%; }
+  .bg-bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 3px; transition: height 0.3s; }
+  .bg-addr { font-size: 10px; color: var(--text-secondary); margin-top: 4px; }
+  .bg-v { font-size: 11px; font-weight: 500; }
+  .bg-scale {
+    display: flex; flex-direction: column; justify-content: space-between;
+    height: 140px; padding: 0 8px 0 0;
+    font-size: 10px; color: var(--text-secondary); text-align: right; flex-shrink: 0;
+  }
+
+  /* ── DIAGNOSIS ── */
+  .diag-box {
+    margin-top: 12px; padding: 12px 16px;
+    border-radius: var(--radius-md);
+    border: 0.5px solid var(--border);
+    background: var(--bg-secondary);
+  }
+  .diag-name { font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; }
+  .diag-txt  { font-size: 13px; color: var(--text-primary); line-height: 1.6; }
+  .diag-cause {
+    font-size: 11px; color: var(--text-secondary);
+    margin-top: 6px; font-family: var(--mono);
+    background: var(--bg-tertiary); padding: 6px 10px;
+    border-radius: 5px; border-left: 3px solid var(--green-mid);
+  }
+
+  /* ── QUAL BARS ── */
+  .qual-row { margin-bottom: 8px; }
+  .qual-header { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; }
+  .qual-track {
+    height: 7px; border-radius: 4px;
+    background: var(--bg-secondary); border: 0.5px solid var(--border);
+    overflow: hidden;
+  }
+  .qual-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+
+  /* ── FOOTER ── */
+  .footer {
+    margin-top: 16px; padding-top: 12px;
+    border-top: 0.5px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 8px;
+    font-size: 11px; color: var(--text-secondary);
+  }
+  .footer strong { color: var(--text-primary); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-icon">PA</div>
+      <div>
+        <div class="brand-name">PROFIBUS PA — Analisador de Sinal</div>
+        <div class="brand-sub">MBP IEC 61158-2 · 31.25 kbps · Simulador Diagnóstico</div>
+      </div>
+    </div>
+    <div class="badge-row">
+      <span id="tlDot" class="tl-dot" style="background:#1D9E75;"></span>
+      <span id="tlStatus" class="badge badge-g">REDE OK</span>
+      <span class="badge badge-g">31.25 kbps</span>
+      <span id="vdcBadge" class="badge badge-g">Vdc: 28.4 V</span>
+    </div>
+  </div>
+
+  <!-- FAULT SELECTOR -->
+  <div class="section-label">Tipo de falha / condição</div>
+  <div class="fault-grid" id="faultGrid">
+    <button class="fbtn active" data-fault="ideal">Sinal ideal</button>
+    <button class="fbtn" data-fault="missing_term">Term. ausente</button>
+    <button class="fbtn" data-fault="extra_term">Term. extra</button>
+    <button class="fbtn" data-fault="short_ab">Curto A-B</button>
+    <button class="fbtn" data-fault="short_shield">Curto B-Shield</button>
+    <button class="fbtn" data-fault="emi_low">EMI 50/60 Hz</button>
+    <button class="fbtn" data-fault="emi_high">EMI VFD</button>
+    <button class="fbtn" data-fault="reflection">Reflexão</button>
+    <button class="fbtn" data-fault="low_voltage">Tensão baixa</button>
+    <button class="fbtn" data-fault="water">Água/corrosão</button>
+    <button class="fbtn" data-fault="dup_addr">End. duplicado</button>
+    <button class="fbtn" data-fault="cable_long">Cabo longo</button>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab active" data-tab="scope">Osciloscópio</div>
+    <div class="tab" data-tab="bargraph">Barras de amplitude</div>
+    <div class="tab" data-tab="measures">Medições</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ SCOPE TAB -->
+  <div class="tab-content active" id="tab-scope">
+
+    <div class="ctrl-row">
+      <div class="ctrl-grp">
+        <span class="ctrl-lbl">Modo:</span>
+        <select id="modeSelect">
+          <option value="diff">B−A Diferencial</option>
+          <option value="a">Linha A</option>
+          <option value="b">Linha B</option>
+          <option value="ab">A+B sobrepostos</option>
+        </select>
+      </div>
+      <div class="ctrl-grp">
+        <span class="ctrl-lbl">Escala Y:</span>
+        <select id="scaleSelect">
+          <option value="200">±200 mV</option>
+          <option value="500" selected>±500 mV</option>
+          <option value="1000">±1000 mV</option>
+        </select>
+      </div>
+      <div class="ctrl-grp">
+        <span class="ctrl-lbl">Zoom X:</span>
+        <input type="range" id="zoomSlider" min="1" max="5" step="0.5" value="1">
+        <span class="ctrl-lbl" id="zoomVal">1×</span>
+      </div>
+      <div class="ctrl-grp">
+        <span class="ctrl-lbl">Ruído:</span>
+        <input type="range" id="noiseSlider" min="0" max="100" step="5" value="15">
+      </div>
+      <button class="freeze-btn" id="freezeBtn">❚❚ Freeze</button>
+    </div>
+
+    <!-- SCOPE COM RÉGUA -->
+    <div class="scope-outer">
+      <div class="yruler"><canvas id="yRuler"></canvas></div>
+      <div class="scope-inner">
+        <canvas id="mainScope"></canvas>
+        <div class="scope-ol">
+          <div class="sc-lbl" id="lblMode">B−A Diferencial</div>
+          <div class="sc-lbl" id="lblScale">Escala: ±500 mV</div>
+          <div class="sc-lbl" id="lblTrig">TRIG AUTO</div>
+        </div>
+        <div class="scope-or">
+          <div class="sc-lbl" id="lblVpk">Vpk: ±450 mV</div>
+          <div class="sc-lbl" id="lblVpp">Vpp: 900 mV</div>
+          <div class="sc-lbl" id="lblIdle">Idle: 1.00 V</div>
+          <div class="sc-lbl" id="lblVdc">Vdc: 28.4 V</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VDC BAR -->
+    <div class="vdc-section">
+      <div class="vdc-label">Tensão DC do segmento &nbsp;(9 V mín → 32 V máx ideal)</div>
+      <div class="vdc-track">
+        <div id="vdcFill" class="vdc-fill" style="width:75%;background:#1D9E75;"></div>
+        <div id="vdcNeedle" class="vdc-needle" style="left:75%;"></div>
+      </div>
+      <div class="vdc-markers">
+        <span class="vdc-tick" style="left:0%">0 V</span>
+        <span class="vdc-tick" style="left:28%">9 V</span>
+        <span class="vdc-tick" style="left:56%">18 V</span>
+        <span class="vdc-tick" style="left:75%">24 V</span>
+        <span class="vdc-tick" style="left:100%">32 V</span>
+      </div>
+    </div>
+
+    <div class="meter-wrap">
+      <span class="meter-label">SNR (dB)</span>
+      <div class="meter-track"><div id="snrNeedle" class="meter-needle" style="left:80%;"></div></div>
+      <span class="meter-val ok" id="snrVal">24.1 dB</span>
+    </div>
+    <div class="meter-wrap">
+      <span class="meter-label">Slope (V/µs)</span>
+      <div class="meter-track"><div id="slopeNeedle" class="meter-needle" style="left:75%;"></div></div>
+      <span class="meter-val ok" id="slopeVal">1.80 V/µs</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ BARGRAPH TAB -->
+  <div class="tab-content" id="tab-bargraph">
+    <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">
+      Amplitude AC Vpk por device (mV) &nbsp;·&nbsp;
+      <span style="color:#1D9E75;">■</span> Verde ≥ 350 mV &nbsp;
+      <span style="color:#BA7517;">■</span> Amarelo 150–350 mV &nbsp;
+      <span style="color:#E24B4A;">■</span> Vermelho &lt; 150 mV
+    </div>
+    <div style="display:flex;align-items:stretch;gap:0;">
+      <div class="bg-scale">
+        <span>800</span><span>600</span><span>450</span><span>300</span><span>150</span><span>0</span>
+      </div>
+      <div style="flex:1;position:relative;">
+        <div id="bgRefLines" style="position:absolute;top:0;left:0;right:0;height:140px;pointer-events:none;"></div>
+        <div class="bg-devices" id="bgDevices"></div>
+      </div>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--text-secondary);font-family:var(--mono);background:var(--bg-secondary);padding:6px 10px;border-radius:5px;border-left:3px solid var(--green-mid);">
+      Física: Vpk = Imod × Z_seg = 9 mA × 50 Ω = <strong>450 mV</strong> nominal &nbsp;|&nbsp; 2 terminadores 100 Ω em paralelo = 50 Ω
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ MEASURES TAB -->
+  <div class="tab-content" id="tab-measures">
+    <div class="mrow" id="mrow"></div>
+    <div style="margin-top:14px;">
+      <div class="section-label">Qualidade por parâmetro</div>
+      <div id="qualBars"></div>
+    </div>
+  </div>
+
+  <!-- DIAGNOSIS — sempre visível -->
+  <div class="diag-box">
+    <div class="diag-name" id="dName">Diagnóstico</div>
+    <div class="diag-txt" id="dTxt">—</div>
+    <div class="diag-cause" id="dCause"></div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span><strong>PROFIBUS PA</strong> · MBP IEC 61158-2 · Imod ±9 mA · Zpk 50 Ω · Vpk ±450 mV</span>
+    <span>Simulador de diagnóstico de camada física · v5.0</span>
+  </div>
+
+</div><!-- .app -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// FÍSICA REAL PROFIBUS PA
+// Imod = ±9 mA | Z_seg = 2×100Ω // = 50 Ω | Vpk = 450 mV
+// Régua sempre em mV AC (offset DC removido — AC coupling)
+// Escala padrão: -500 mV a +500 mV
+// ═══════════════════════════════════════════════════════════════════
+
+const FD = {
+  ideal: {
+    label:"Sinal ideal — ±450 mV",
+    vdc:28.4, vpk:450, vpp:900, idle:1.00, snr:24.1, slope:1.80,
+    status:"ok", statusTxt:"REDE OK",
+    bargraph:[450,448,455,442,450],
+    params:{vdc:100,vpk:100,idle:100,snr:100,slope:100,noise:100},
+    diag:"Forma de onda Manchester MBP perfeita. Vpk ±450 mV (9 mA × 50 Ω). Vdc 28.4 V estável. Idle ~1 V confirma 2 terminações ativas. SNR > 20 dB.",
+    cause:"Imod: ±9 mA  |  Z_seg: 50 Ω  |  Vpk: ±450 mV  |  Vdc: 24–32 V  |  Term: 100 Ω + 1 µF × 2",
+    wfn:(x,t)=>{const T=32,bit=Math.floor(x/(T/2))%8,bits=[1,0,1,1,0,1,0,1],ph=(x%(T/2))/(T/2);return((bits[bit]===1)?(ph<0.5?1:-1):(ph<0.5?-1:1))*0.9;}
+  },
+  missing_term: {
+    label:"Terminação ausente — overshoot ±680 mV",
+    vdc:27.8, vpk:680, vpp:1360, idle:0.38, snr:9.2, slope:1.1,
+    status:"warn", statusTxt:"ALERTA",
+    bargraph:[290,195,448,165,240],
+    params:{vdc:90,vpk:40,idle:20,snr:38,slope:50,noise:35},
+    diag:"Vpk sobe para ±680 mV — reflexão em fase soma ao sinal original. Idle cai para 0.38 V: apenas 1 terminação ativa.",
+    cause:"Idle < 0.8 V → terminador ausente  |  Vpk > 600 mV indica reflexão  |  Verificar SW nos 2 extremos do tronco",
+    wfn:(x,t)=>{const T=32,bit=Math.floor(x/(T/2))%8,bits=[1,0,1,1,0,1,0,1],ph=(x%(T/2))/(T/2);let v=((bits[bit]===1)?(ph<0.5?1:-1):(ph<0.5?-1:1))*0.9;return v+0.42*Math.sin(x*0.35+t*0.05)*Math.exp(-ph*1.2)+(ph<0.06||ph>0.94?0.48*Math.sin(ph*Math.PI*20):0);}
+  },
+  extra_term: {
+    label:"Terminação extra — atenuado ±190 mV",
+    vdc:26.5, vpk:190, vpp:380, idle:0.62, snr:12.4, slope:0.9,
+    status:"warn", statusTxt:"ALERTA",
+    bargraph:[180,165,195,210,175],
+    params:{vdc:82,vpk:30,idle:50,snr:48,slope:40,noise:70},
+    diag:"Vpk ±190 mV. 3 terminadores // = Z 33 Ω. Sinal atenuado a ~42% do nominal. CRC errors crescentes.",
+    cause:"3 term.//=33Ω → Vpk≈280 mV teórico (perdas → ~190 mV)  |  Localizar terminador extra com desconexão sequencial",
+    wfn:(x,t)=>{const T=32,bit=Math.floor(x/(T/2))%8,bits=[1,0,1,1,0,1,0,1],ph=(x%(T/2))/(T/2);return((bits[bit]===1)?(ph<0.5?1:-1):(ph<0.5?-1:1))*0.38+0.07*Math.sin(x*0.8+t*0.02);}
+  },
+  short_ab: {
+    label:"Curto A-B — sinal ≈ 0",
+    vdc:13.2, vpk:12, vpp:24, idle:0.0, snr:1.1, slope:0.0,
+    status:"err", statusTxt:"FALHA",
+    bargraph:[10,0,15,8,0],
+    params:{vdc:40,vpk:2,idle:0,snr:4,slope:0,noise:0},
+    diag:"Curto A-B: Vdc colapsa para 13 V. Vpk ≈ 0. Apenas ruído residual. Nenhum device comunica.",
+    cause:"Vdc < 15 V + Vpk ≈ 0 → curto direto  |  Cabo danificado / corrosão severa / splitter defeituoso",
+    wfn:(x,t)=>0.025*(Math.random()-0.5)+0.008*Math.sin(x*2.1+t*0.1)
+  },
+  short_shield: {
+    label:"Curto B-Shield — assimetria",
+    vdc:25.1, vpk:270, vpp:540, idle:0.55, snr:7.8, slope:1.0,
+    status:"err", statusTxt:"FALHA",
+    bargraph:[255,105,285,82,185],
+    params:{vdc:78,vpk:40,idle:40,snr:30,slope:45,noise:20},
+    diag:"Vpk assimétrico ~270 mV. A e B perdem equilíbrio diferencial. Corrente de shield elevada. Forma de 'J' invertido.",
+    cause:"Medir corrente shield: > 10 mA confirma curto  |  Crimping incorreto / isolamento comprometido",
+    wfn:(x,t)=>{const T=32,bit=Math.floor(x/(T/2))%8,bits=[1,0,1,1,0,1,0,1],ph=(x%(T/2))/(T/2);return((bits[bit]===1)?(ph<0.5?1:-1):(ph<0.5?-1:1))*0.55+0.11*Math.sin(x*0.9+t*0.03);}
+  },
+  emi_low: {
+    label:"EMI 50/60 Hz — ruído de rede",
+    vdc:28.0, vpk:455, vpp:910, idle:0.95, snr:11.2, slope:1.6,
+    status:"warn", statusTxt:"ALERTA",
+    bargraph:[380,355,375,325,392],
+    params:{vdc:88,vpk:90,idle:85,snr:43,slope:82,noise:15},
+    diag:"Vpk nominal ~455 mV. Ruído 50/60 Hz sobreposto com amplitude ~80–150 mV pico. Shield com laço de terra.",
+    cause:"Shield aterrado nos 2 extremos (laço)  |  Separar cabo PA / CA > 20 cm  |  Aterrar em 1 ponto apenas",
+    wfn:(x,t)=>{const T=32,bit=Math.floor(x/(T/2))%8,bits=[1,0,1,1,0,1,0,1],ph=(x%(T/2))/(T/2);return((bits[bit]===1)?(ph<0.5?1:-1):(ph<0.5?-1:1))*0.9+0.32*Math.sin(x*0.06+t*0.04);}
+  },
+  emi_high: {
+    label:"EMI VFD — picos erráticos",
+    vdc:27.5, vpk:450, vpp:900, idle:0.92, snr:6.3, slope:1.5,
+    status:"err", statusTxt:"FALHA",
+    bargraph:[320,185,355,140,260],
+    params:{vdc:86,vpk:88,idle:80,snr:24,slope:78,noise:5},
+    diag:"Sinal base ~450 mV. Picos de ruído de alta freq. chegam a ±300 mV adicionais. Telegrams com CRC error alto.",
+    cause:"Cabo paralelo a motor/VFD  |  Separação Cat I vs Cat III: mín. 20 cm  |  Shield interrompido ou desaterrado",
+    wfn:(x,t)=>{const T=32,bit=Math.floor(x/(T/2))%8,bits=[1,0,1,1,0,1,0,1],ph=(x%(T/2))/(T/2);let v=((bits[bit]===1)?(ph<0.5?1:-1):(ph<0.5?-1:1))*0.9;return v+0.38*Math.sin(x*2.8+t*0.12)+0.22*Math.sin(x*5.3+t*0.21)+(Math.random()<0.04?(Math.random()-0.5)*0.9:0);}
+  },
+  reflection: {
+    label:"Reflexão — overshoot ±520 mV",
+    vdc:28.1, vpk:520, vpp:1040, idle:0.98, snr:13.5, slope:1.4,
+    status:"warn", statusTxt:"ALERTA",
+    bargraph:[430,285,415,260,375],
+    params:{vdc:88,vpk:55,idle:90,snr:52,slope:60,noise:45},
+    diag:"Vpk ~520 mV por reflexão parcial. Borda com 'degrau' duplo. Largura da reflexão indica distância ao defeito.",
+    cause:"Stub > 1 m  |  Term: 100 Ω + 1 µF série  |  Cabo: Zc = 100 Ω ±10%  |  Stub PA máx. 120 m",
+    wfn:(x,t)=>{const T=32,bit=Math.floor(x/(T/2))%8,bits=[1,0,1,1,0,1,0,1],ph=(x%(T/2))/(T/2);let v=((bits[bit]===1)?(ph<0.5?1:-1):(ph<0.5?-1:1))*0.85;return v+0.28*Math.exp(-Math.pow((ph-0.12)*8,2))*v+0.18*Math.exp(-Math.pow((ph-0.62)*8,2))*(-v);}
+  },
+  low_voltage: {
+    label:"Tensão baixa — ±155 mV",
+    vdc:10.8, vpk:155, vpp:310, idle:0.28, snr:8.1, slope:0.5,
+    status:"err", statusTxt:"FALHA",
+    bargraph:[140,82,165,62,110],
+    params:{vdc:20,vpk:20,idle:18,snr:31,slope:22,noise:62},
+    diag:"Vdc 10.8 V → abaixo do mínimo (9 V no device). Vpk ±155 mV (corrente reduzida). Devices distantes caem primeiro.",
+    cause:"Corrente total > 500 mA  |  Cabo longo (queda resistiva)  |  Fonte subdimensionada  |  Calcular balanço de potência",
+    wfn:(x,t)=>{const T=32,bit=Math.floor(x/(T/2))%8,bits=[1,0,1,1,0,1,0,1],ph=(x%(T/2))/(T/2);return((bits[bit]===1)?(ph<0.5?1:-1):(ph<0.5?-1:1))*0.26+0.07*Math.sin(x*0.4+t*0.03);}
+  },
+  water: {
+    label:"Água / corrosão — ±315 mV",
+    vdc:26.9, vpk:315, vpp:630, idle:0.80, snr:7.2, slope:1.3,
+    status:"err", statusTxt:"FALHA",
+    bargraph:[290,125,320,100,240],
+    params:{vdc:84,vpk:72,idle:72,snr:27,slope:68,noise:8},
+    diag:"Vpk ~315 mV. Ruído randômico — visualmente similar ao EMI. Distinguir: corrente shield (EMI alta, água baixa).",
+    cause:"Gland vedado  |  JB sem respiro  |  Megôhmetro: R_iso < 1 MΩ confirma umidade / corrosão",
+    wfn:(x,t)=>{const T=32,bit=Math.floor(x/(T/2))%8,bits=[1,0,1,1,0,1,0,1],ph=(x%(T/2))/(T/2);return((bits[bit]===1)?(ph<0.5?1:-1):(ph<0.5?-1:1))*0.75+0.28*(Math.random()-0.5)+0.13*Math.sin(x*1.7+t*0.07);}
+  },
+  dup_addr: {
+    label:"Endereço duplicado — colisão",
+    vdc:27.9, vpk:450, vpp:900, idle:0.90, snr:8.8, slope:1.2,
+    status:"err", statusTxt:"FALHA",
+    bargraph:[448,760,445,452,446],
+    params:{vdc:87,vpk:88,idle:82,snr:34,slope:55,noise:25},
+    diag:"Colisão: 2 sinais defasados sobrepostos. Device PA.02 exibe ~760 mV (soma de 2 transmissores). Dois devices caem simultaneamente.",
+    cause:"Class 2 master scan → identificar duplicatas  |  DIP switch incorreto em device substituído",
+    wfn:(x,t)=>{const T=32,bits1=[1,0,1,1,0,1,0,1],bits2=[1,0,0,1,1,0,1,0],ph=(x%(T/2))/(T/2),bit=Math.floor(x/(T/2))%8;const v1=(bits1[bit]===1)?(ph<0.5?1:-1):(ph<0.5?-1:1);const x2=x+0.08*T,ph2=(x2%(T/2))/(T/2),bit2=Math.floor(x2/(T/2))%8;const v2=(bits2[bit2%8]===1)?(ph2<0.5?0.9:-0.9):(ph2<0.5?-0.9:0.9);return(v1*0.9+v2*0.85)*0.55;}
+  },
+  cable_long: {
+    label:"Cabo longo — ±188 mV, bordas suaves",
+    vdc:27.2, vpk:188, vpp:376, idle:0.85, snr:11.0, slope:0.6,
+    status:"warn", statusTxt:"ALERTA",
+    bargraph:[175,155,202,142,168],
+    params:{vdc:85,vpk:28,idle:78,snr:42,slope:28,noise:68},
+    diag:"Vpk ~188 mV. Bordas arredondadas — capacitância do cabo filtra as transições. Slew rate reduzido.",
+    cause:"Tronco PA máx. 1900 m  |  Stub máx. 120 m  |  ~200 pF/m → RC filtra bordas  |  Adicionar repetidor",
+    wfn:(x,t)=>{const T=32,bit=Math.floor(x/(T/2))%8,bits=[1,0,1,1,0,1,0,1],ph=(x%(T/2))/(T/2);return Math.tanh(((bits[bit]===1)?(ph<0.5?1:-1):(ph<0.5?-1:1))*2.5)*0.40+0.05*Math.sin(x*0.3+t*0.02);}
+  }
+};
+
+// ── STATE ────────────────────────────────────────────────────────
+let cf = 'ideal', mode = 'diff', scaleMaxMV = 500;
+let zoom = 1, noiseLevel = 15, frozen = false, af = 0;
+const DPR = window.devicePixelRatio || 1;
+const NDIVS = 10;
+
+const scopeEl = document.getElementById('mainScope');
+const sCtx    = scopeEl.getContext('2d');
+const rulerEl = document.getElementById('yRuler');
+const rCtx    = rulerEl.getContext('2d');
+
+// ── SIZE ─────────────────────────────────────────────────────────
+function setSize() {
+  const outer = document.querySelector('.scope-outer');
+  const H = outer.clientHeight;
+  const W = outer.clientWidth - 54;
+  scopeEl.width  = W * DPR; scopeEl.height = H * DPR;
+  scopeEl.style.width = W + 'px'; scopeEl.style.height = H + 'px';
+  sCtx.setTransform(1,0,0,1,0,0); sCtx.scale(DPR, DPR);
+  rulerEl.width  = 54 * DPR; rulerEl.height = H * DPR;
+  rulerEl.style.width = '54px'; rulerEl.style.height = H + 'px';
+  rCtx.setTransform(1,0,0,1,0,0); rCtx.scale(DPR, DPR);
+  drawRuler(H);
+}
+
+// ── RÉGUA VERTICAL ───────────────────────────────────────────────
+function drawRuler(H) {
+  rCtx.clearRect(0, 0, 54, H);
+  const divH     = H / NDIVS;
+  const mVperDiv = (scaleMaxMV * 2) / NDIVS;
+
+  rCtx.font = '9px monospace';
+  for (let i = 0; i <= NDIVS; i++) {
+    const py   = i * divH;
+    const mV   = scaleMaxMV - i * mVperDiv;
+    const isZero  = Math.abs(mV) < 0.01;
+    const isMajor = (i % 2 === 0);
+
+    rCtx.strokeStyle = isZero ? 'rgba(74,222,128,1.0)' : isMajor ? 'rgba(74,222,128,0.6)' : 'rgba(74,222,128,0.22)';
+    rCtx.lineWidth   = isZero ? 1.8 : isMajor ? 0.9 : 0.5;
+    const tickW = isZero ? 52 : isMajor ? 34 : 18;
+    rCtx.beginPath(); rCtx.moveTo(54 - tickW, py); rCtx.lineTo(54, py); rCtx.stroke();
+
+    if (isMajor || isZero) {
+      let lbl;
+      if (isZero)          lbl = '0';
+      else if (mV >= 1000) lbl = '+' + (mV/1000).toFixed(1) + 'V';
+      else if (mV <= -1000)lbl = (mV/1000).toFixed(1) + 'V';
+      else                 lbl = (mV > 0 ? '+' : '') + Math.round(mV) + 'mV';
+
+      rCtx.fillStyle  = isZero ? '#4ade80' : mV > 0 ? 'rgba(74,222,128,0.75)' : 'rgba(248,113,113,0.75)';
+      rCtx.textAlign  = 'right';
+      const yOff = i === 0 ? 9 : i === NDIVS ? -2 : 3.5;
+      rCtx.fillText(lbl, 52, py + yOff);
+    }
+  }
+
+  // marcação ±450 mV nominal
+  const n450  = H/2 - (450 / scaleMaxMV) * (H/2);
+  const nN450 = H/2 + (450 / scaleMaxMV) * (H/2);
+  if (n450 >= 0 && n450 <= H) {
+    rCtx.strokeStyle = 'rgba(250,204,21,0.5)'; rCtx.setLineDash([2,3]); rCtx.lineWidth = 0.8;
+    rCtx.beginPath(); rCtx.moveTo(0, n450);  rCtx.lineTo(54, n450);  rCtx.stroke();
+    rCtx.beginPath(); rCtx.moveTo(0, nN450); rCtx.lineTo(54, nN450); rCtx.stroke();
+    rCtx.setLineDash([]);
+    rCtx.fillStyle = 'rgba(250,204,21,0.65)'; rCtx.textAlign = 'right'; rCtx.font = '8px monospace';
+    rCtx.fillText('+450', 52, n450 - 1);
+    rCtx.fillText('-450', 52, nN450 + 8);
+  }
+
+  // label rotacionado
+  rCtx.save();
+  rCtx.translate(8, H/2); rCtx.rotate(-Math.PI/2);
+  rCtx.font = '9px monospace'; rCtx.fillStyle = 'rgba(74,222,128,0.35)'; rCtx.textAlign = 'center';
+  rCtx.fillText('mV/div', 0, 0);
+  rCtx.restore();
+
+  // valor mV/div
+  rCtx.font = '9px monospace'; rCtx.textAlign = 'center';
+  rCtx.fillStyle = 'rgba(74,222,128,0.55)';
+  rCtx.fillText(Math.round(mVperDiv) + 'mV', 27, H - 4);
+}
+
+// ── GRID ─────────────────────────────────────────────────────────
+function drawGrid(W, H) {
+  sCtx.strokeStyle = 'rgba(0,180,100,0.07)'; sCtx.lineWidth = 0.5;
+  for (let i = 0; i <= 10; i++) { sCtx.beginPath(); sCtx.moveTo(i*W/10,0); sCtx.lineTo(i*W/10,H); sCtx.stroke(); }
+  for (let i = 0; i <= NDIVS; i++) { sCtx.beginPath(); sCtx.moveTo(0,i*H/NDIVS); sCtx.lineTo(W,i*H/NDIVS); sCtx.stroke(); }
+  sCtx.strokeStyle = 'rgba(74,222,128,0.35)'; sCtx.lineWidth = 1.2;
+  sCtx.beginPath(); sCtx.moveTo(0, H/2); sCtx.lineTo(W, H/2); sCtx.stroke();
+  const n450  = H/2 - (450/scaleMaxMV)*(H/2);
+  const nN450 = H/2 + (450/scaleMaxMV)*(H/2);
+  sCtx.strokeStyle = 'rgba(250,204,21,0.15)'; sCtx.setLineDash([4,4]); sCtx.lineWidth = 0.8;
+  sCtx.beginPath(); sCtx.moveTo(0, n450);  sCtx.lineTo(W, n450);  sCtx.stroke();
+  sCtx.beginPath(); sCtx.moveTo(0, nN450); sCtx.lineTo(W, nN450); sCtx.stroke();
+  sCtx.setLineDash([]);
+  sCtx.font = '9px monospace'; sCtx.fillStyle = 'rgba(250,204,21,0.38)'; sCtx.textAlign = 'left';
+  sCtx.fillText('+450 mV nominal', 4, n450 - 3);
+  sCtx.fillText('-450 mV nominal', 4, nN450 + 11);
+}
+
+// ── WAVEFORM ─────────────────────────────────────────────────────
+function drawWave(W, H, t) {
+  const fd = FD[cf];
+  const nz = noiseLevel / 2000;
+  const xScale  = 256 / (W * zoom);
+  const pxPerMV = (H/2) / scaleMaxMV;
+  const yCenter = H / 2;
+
+  const drawL = (wfnFn, col, alpha) => {
+    sCtx.beginPath(); sCtx.strokeStyle = col; sCtx.globalAlpha = alpha; sCtx.lineWidth = 1.7;
+    let first = true;
+    for (let px = 0; px < W; px++) {
+      const xv   = px * xScale;
+      const norm = wfnFn(xv, t) + (Math.random() - 0.5) * nz;
+      const py   = yCenter - norm * 450 * pxPerMV;
+      first ? (sCtx.moveTo(px, py), first = false) : sCtx.lineTo(px, py);
+    }
+    sCtx.stroke(); sCtx.globalAlpha = 1;
+  };
+
+  if (mode === 'ab') {
+    drawL((x,t2) => fd.wfn(x,t2)*0.92,  '#4ade80', 0.85);
+    drawL((x,t2) => -fd.wfn(x,t2)*0.88, '#facc15', 0.75);
+    sCtx.font = '10px monospace';
+    sCtx.fillStyle = '#4ade80'; sCtx.fillText('A', 8, H-18);
+    sCtx.fillStyle = '#facc15'; sCtx.fillText('B', 8, H-6);
+  } else {
+    drawL(fd.wfn, '#4ade80', 1);
+  }
+
+  sCtx.strokeStyle = 'rgba(250,204,21,0.22)'; sCtx.setLineDash([3,3]); sCtx.lineWidth = 0.7;
+  sCtx.beginPath(); sCtx.moveTo(0, yCenter - 20*pxPerMV); sCtx.lineTo(W, yCenter - 20*pxPerMV); sCtx.stroke();
+  sCtx.setLineDash([]);
+}
+
+function render() {
+  if (frozen) return;
+  const W = scopeEl.width/DPR, H = scopeEl.height/DPR;
+  sCtx.clearRect(0, 0, W, H);
+  drawGrid(W, H);
+  drawWave(W, H, af);
+  af += 0.5;
+  requestAnimationFrame(render);
+}
+
+// ── METRICS ──────────────────────────────────────────────────────
+function updateMetrics() {
+  const fd = FD[cf];
+  document.getElementById('lblVpk').textContent  = 'Vpk: ±' + fd.vpk + ' mV';
+  document.getElementById('lblVpk').className    = 'sc-lbl' + (fd.vpk > 650 || fd.vpk < 50 ? ' err' : fd.vpk > 520 || fd.vpk < 200 ? ' warn' : '');
+  document.getElementById('lblVpp').textContent  = 'Vpp: ' + fd.vpp + ' mV';
+  document.getElementById('lblIdle').textContent = 'Idle: ' + fd.idle.toFixed(2) + ' V';
+  document.getElementById('lblIdle').className   = 'sc-lbl' + (fd.idle < 0.6 ? ' err' : fd.idle < 0.85 ? ' warn' : '');
+  document.getElementById('lblVdc').textContent  = 'Vdc: ' + fd.vdc.toFixed(1) + ' V';
+
+  const vPct = Math.min(100, fd.vdc/32*100);
+  const vCol = fd.vdc < 12 ? '#A32D2D' : fd.vdc < 18 ? '#BA7517' : '#1D9E75';
+  document.getElementById('vdcFill').style.cssText   = 'width:'+vPct+'%;background:'+vCol+';';
+  document.getElementById('vdcNeedle').style.left    = vPct + '%';
+  document.getElementById('vdcBadge').textContent    = 'Vdc: ' + fd.vdc.toFixed(1) + ' V';
+  document.getElementById('vdcBadge').className      = 'badge ' + (fd.vdc < 12 ? 'badge-r' : fd.vdc < 18 ? 'badge-y' : 'badge-g');
+
+  const snrPct = Math.min(100, (fd.snr/30)*100);
+  document.getElementById('snrNeedle').style.left = snrPct + '%';
+  document.getElementById('snrVal').textContent   = fd.snr.toFixed(1) + ' dB';
+  document.getElementById('snrVal').className     = 'meter-val ' + (fd.snr < 10 ? 'err' : fd.snr < 15 ? 'warn' : 'ok');
+
+  const sPct = Math.min(100, (fd.slope/2.5)*100);
+  document.getElementById('slopeNeedle').style.left = sPct + '%';
+  document.getElementById('slopeVal').textContent   = fd.slope.toFixed(1) + ' V/µs';
+  document.getElementById('slopeVal').className     = 'meter-val ' + (fd.slope < 0.8 ? 'err' : fd.slope < 1.2 ? 'warn' : 'ok');
+
+  const cols  = {ok:'#1D9E75', warn:'#BA7517', err:'#A32D2D'};
+  const bgCls = {ok:'badge-g',  warn:'badge-y',  err:'badge-r'};
+  document.getElementById('tlDot').style.background = cols[fd.status];
+  document.getElementById('tlStatus').textContent   = fd.statusTxt;
+  document.getElementById('tlStatus').className     = 'badge ' + bgCls[fd.status];
+  document.getElementById('dName').textContent = fd.label;
+  document.getElementById('dTxt').textContent  = fd.diag;
+  document.getElementById('dCause').textContent = fd.cause;
+
+  buildBargraph(); buildMeasures();
+  const H = rulerEl.height / DPR;
+  rCtx.clearRect(0, 0, 54, H); drawRuler(H);
+}
+
+function buildBargraph() {
+  const fd = FD[cf];
+  const devs = document.getElementById('bgDevices');
+  devs.innerHTML = '';
+  ['PA.01','PA.02','PA.03','PA.04','PA.05'].forEach((a, i) => {
+    const v   = fd.bargraph[i];
+    const pct = Math.min(100, v/800*100);
+    const col  = v < 150 ? '#A32D2D' : v < 350 ? '#BA7517' : '#1D9E75';
+    const col2 = v < 150 ? '#f87171' : v < 350 ? '#facc15' : '#4ade80';
+    devs.innerHTML += `<div class="bg-col">
+      <div class="bg-bar-wrap"><div class="bg-bar" style="height:${pct}%;background:${col};"></div></div>
+      <div class="bg-v" style="color:${col2}">${v}mV</div>
+      <div class="bg-addr">${a}</div>
+    </div>`;
+  });
+  document.getElementById('bgRefLines').innerHTML = `
+    <div style="position:absolute;top:${100-450/800*100}%;left:0;right:0;border-top:1px solid rgba(250,204,21,0.45);font-size:9px;color:rgba(250,204,21,0.7);padding-left:4px;">450 mV nominal</div>
+    <div style="position:absolute;top:${100-350/800*100}%;left:0;right:0;border-top:1px dashed rgba(29,158,117,0.4);"></div>
+    <div style="position:absolute;top:${100-150/800*100}%;left:0;right:0;border-top:1px dashed rgba(163,45,45,0.4);"></div>`;
+}
+
+function buildMeasures() {
+  const fd = FD[cf];
+  const metrics = [
+    {l:'Vdc segmento', v:fd.vdc.toFixed(1)+' V',   c:fd.vdc<12?'err':fd.vdc<18?'warn':'ok'},
+    {l:'Vpk AC',       v:'±'+fd.vpk+' mV',          c:fd.vpk<100||fd.vpk>650?'err':fd.vpk<200?'warn':'ok'},
+    {l:'Vpp',          v:fd.vpp+' mV',               c:fd.vpp<200?'err':fd.vpp<400?'warn':'ok'},
+    {l:'Idle volt.',   v:fd.idle.toFixed(2)+' V',    c:fd.idle<0.6?'err':fd.idle<0.85?'warn':'ok'},
+    {l:'SNR',          v:fd.snr.toFixed(1)+' dB',    c:fd.snr<10?'err':fd.snr<15?'warn':'ok'},
+    {l:'Slope',        v:fd.slope.toFixed(1)+' V/µs',c:fd.slope<0.8?'err':fd.slope<1.2?'warn':'ok'},
+  ];
+  document.getElementById('mrow').innerHTML = metrics.map(m =>
+    `<div class="mcard"><div class="mc-lbl">${m.l}</div><div class="mc-val ${m.c}">${m.v}</div></div>`
+  ).join('');
+
+  const params = [
+    {l:'Tensão DC',    p:fd.params.vdc},
+    {l:'Vpk AC',       p:fd.params.vpk},
+    {l:'Idle voltage', p:fd.params.idle},
+    {l:'SNR',          p:fd.params.snr},
+    {l:'Slope',        p:fd.params.slope},
+    {l:'Ausência ruído', p:fd.params.noise},
+  ];
+  document.getElementById('qualBars').innerHTML = params.map(p => {
+    const col = p.p < 30 ? '#A32D2D' : p.p < 55 ? '#BA7517' : '#1D9E75';
+    return `<div class="qual-row">
+      <div class="qual-header"><span>${p.l}</span><span style="color:${col};font-weight:500">${p.p}%</span></div>
+      <div class="qual-track"><div class="qual-fill" style="width:${p.p}%;background:${col};"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── EVENTS ───────────────────────────────────────────────────────
+document.querySelectorAll('.fbtn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.fbtn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); cf = b.dataset.fault; updateMetrics();
+  });
+});
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+  });
+});
+document.getElementById('modeSelect').addEventListener('change', e => {
+  mode = e.target.value;
+  const lbls = {diff:'B−A Diferencial', a:'Linha A', b:'Linha B', ab:'A+B sobrepostos'};
+  document.getElementById('lblMode').textContent = lbls[mode];
+});
+document.getElementById('scaleSelect').addEventListener('change', e => {
+  scaleMaxMV = parseFloat(e.target.value);
+  document.getElementById('lblScale').textContent = 'Escala: ±' + scaleMaxMV + ' mV';
+  const H = rulerEl.height / DPR; rCtx.clearRect(0, 0, 54, H); drawRuler(H);
+});
+document.getElementById('zoomSlider').addEventListener('input', e => {
+  zoom = parseFloat(e.target.value);
+  document.getElementById('zoomVal').textContent = zoom.toFixed(1) + '×';
+});
+document.getElementById('noiseSlider').addEventListener('input', e => noiseLevel = parseInt(e.target.value));
+document.getElementById('freezeBtn').addEventListener('click', () => {
+  frozen = !frozen;
+  const btn = document.getElementById('freezeBtn');
+  btn.textContent = frozen ? '▶ Run' : '❚❚ Freeze';
+  btn.classList.toggle('frozen', frozen);
+  document.getElementById('lblTrig').textContent = frozen ? 'TRIG HOLD' : 'TRIG AUTO';
+  if (!frozen) render();
+});
+window.addEventListener('resize', () => setSize());
+
+// ── INIT ─────────────────────────────────────────────────────────
+setSize(); updateMetrics(); render();
+</script>
+</body>
+</html>
